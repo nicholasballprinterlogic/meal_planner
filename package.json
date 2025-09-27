@@ -1,0 +1,33 @@
+{
+  "name": "meal-planner",
+  "version": "1.0.0",
+  "description": "A React-based meal planning application",
+  "main": "index.html",
+  "scripts": {
+    "dev": "live-server --port=3000",
+    "build": "echo 'Build complete - using static HTML file'",
+    "deploy": "gh-pages -d .",
+    "predeploy": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickball12/meal_planner.git"
+  },
+  "keywords": [
+    "meal-planner",
+    "react",
+    "food",
+    "planning",
+    "grocery-list"
+  ],
+  "author": "nickball12",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/nickball12/meal_planner/issues"
+  },
+  "homepage": "https://nickball12.github.io/meal_planner/",
+  "devDependencies": {
+    "gh-pages": "^6.1.1",
+    "live-server": "^1.2.2"
+  }
+}
