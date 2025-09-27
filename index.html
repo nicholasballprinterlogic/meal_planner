@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meal Planner</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <!-- Lucide icons will be replaced with simple text -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -17,6 +17,7 @@
                 sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            background-color: #f5f5f5;
         }
         
         code {
@@ -31,7 +32,14 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
         const { createRoot } = ReactDOM;
-        const { Shuffle, ShoppingCart, Plus, X, RefreshCw, Save, Edit } = lucide;
+        // Simple icon replacements
+        const Shuffle = () => "🎲";
+        const ShoppingCart = () => "🛒";
+        const Plus = () => "➕";
+        const X = () => "❌";
+        const RefreshCw = () => "🔄";
+        const Save = () => "💾";
+        const Edit = () => "✏️";
 
         const MealPlanner = () => {
           // Your historic meals
@@ -283,229 +291,265 @@
             }
           }, [mealCount]);
 
-          return React.createElement('div', { className: "max-w-4xl mx-auto p-6 bg-white" },
-            React.createElement('h1', { className: "text-3xl font-bold text-gray-800 mb-8 text-center" }, "Meal Planner"),
-            
-            // Add New Meal Section
-            React.createElement('div', { className: "bg-purple-50 p-6 rounded-lg mb-6" },
-              React.createElement('div', { className: "flex items-center justify-between mb-4" },
-                React.createElement('h2', { className: "text-lg font-medium text-gray-800" }, "Meal Database"),
-                React.createElement('div', { className: "flex items-center space-x-4" },
-                  React.createElement('span', { className: "text-sm text-gray-600" }, `Total meals: ${allMeals.length}`),
-                  React.createElement('button', {
-                    onClick: () => setShowMealList(!showMealList),
-                    className: "px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                  }, showMealList ? 'Hide' : 'View', ' All Meals'),
-                  !showAddMeal && React.createElement('button', {
-                    onClick: () => {
-                      setEditingMealIndex(-1);
-                      setShowAddMeal(true);
-                    },
-                    className: "flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
-                  },
-                    React.createElement(Plus, { size: 16 }),
-                    React.createElement('span', null, "Add New Meal")
-                  )
-                )
-              ),
+          return (
+            <div className="max-w-4xl mx-auto p-6 bg-white">
+              <h1 className="text-3xl font-bold text-gray-800 mb-8 text-center">Meal Planner</h1>
+              
+              {/* Add New Meal Section */}
+              <div className="bg-purple-50 p-6 rounded-lg mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-medium text-gray-800">Meal Database</h2>
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm text-gray-600">
+                      Total meals: {allMeals.length}
+                    </span>
+                    <button
+                      onClick={() => setShowMealList(!showMealList)}
+                      className="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+                    >
+                      {showMealList ? 'Hide' : 'View'} All Meals
+                    </button>
+                    {!showAddMeal && (
+                      <button
+                        onClick={() => {
+                          setEditingMealIndex(-1);
+                          setShowAddMeal(true);
+                        }}
+                        className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+                      >
+                        <span>➕</span>
+                        <span>Add New Meal</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-              // Meal List for Editing
-              showMealList && !showAddMeal && React.createElement('div', { className: "bg-white p-4 rounded-lg border-2 border-purple-200 mb-4" },
-                React.createElement('h3', { className: "font-medium text-gray-800 mb-4" }, "All Meals"),
-                React.createElement('div', { className: "max-h-64 overflow-y-auto space-y-2" },
-                  allMeals.map((meal, index) =>
-                    React.createElement('div', { key: index, className: "flex items-center justify-between p-3 bg-gray-50 rounded-lg" },
-                      React.createElement('div', { className: "flex-1" },
-                        React.createElement('h4', { className: "font-medium text-gray-800" }, meal.name),
-                        React.createElement('p', { className: "text-sm text-gray-600" },
-                          meal.ingredients && meal.ingredients.length > 0 
-                            ? `${meal.ingredients.length} ingredients`
-                            : 'No ingredients'
-                        )
-                      ),
-                      React.createElement('button', {
-                        onClick: () => startEditMeal(index),
-                        className: "flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                      },
-                        React.createElement(Edit, { size: 14 }),
-                        React.createElement('span', null, "Edit")
-                      )
-                    )
-                  )
-                )
-              ),
+                {/* Meal List for Editing */}
+                {showMealList && !showAddMeal && (
+                  <div className="bg-white p-4 rounded-lg border-2 border-purple-200 mb-4">
+                    <h3 className="font-medium text-gray-800 mb-4">All Meals</h3>
+                    <div className="max-h-64 overflow-y-auto space-y-2">
+                      {allMeals.map((meal, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-gray-800">{meal.name}</h4>
+                            <p className="text-sm text-gray-600">
+                              {meal.ingredients && meal.ingredients.length > 0 
+                                ? `${meal.ingredients.length} ingredients`
+                                : 'No ingredients'
+                              }
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => startEditMeal(index)}
+                            className="flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            <span>✏️</span>
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              showAddMeal && React.createElement('div', { className: "bg-white p-4 rounded-lg border-2 border-purple-200" },
-                React.createElement('h3', { className: "font-medium text-gray-800 mb-4" },
-                  editingMealIndex >= 0 ? 'Edit Meal' : 'Add New Meal'
-                ),
-                
-                // Meal Name Input
-                React.createElement('div', { className: "mb-4" },
-                  React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-2" }, "Meal Name"),
-                  React.createElement('input', {
-                    type: "text",
-                    value: newMealName,
-                    onChange: (e) => setNewMealName(e.target.value),
-                    placeholder: "Enter meal name...",
-                    className: "w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  })
-                ),
+                {showAddMeal && (
+                  <div className="bg-white p-4 rounded-lg border-2 border-purple-200">
+                    <h3 className="font-medium text-gray-800 mb-4">
+                      {editingMealIndex >= 0 ? 'Edit Meal' : 'Add New Meal'}
+                    </h3>
+                    
+                    {/* Meal Name Input */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Meal Name
+                      </label>
+                      <input
+                        type="text"
+                        value={newMealName}
+                        onChange={(e) => setNewMealName(e.target.value)}
+                        placeholder="Enter meal name..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
 
-                // Ingredients Input
-                React.createElement('div', { className: "mb-4" },
-                  React.createElement('label', { className: "block text-sm font-medium text-gray-700 mb-2" }, "Ingredients"),
-                  React.createElement('div', { className: "space-y-2" },
-                    newMealIngredients.map((ingredient, index) =>
-                      React.createElement('div', { key: index, className: "flex items-center space-x-2" },
-                        React.createElement('input', {
-                          type: "text",
-                          value: ingredient,
-                          onChange: (e) => updateIngredient(index, e.target.value),
-                          placeholder: "Enter ingredient...",
-                          className: "flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        }),
-                        newMealIngredients.length > 1 && React.createElement('button', {
-                          onClick: () => removeIngredientField(index),
-                          className: "p-2 text-red-500 hover:bg-red-50 rounded-md"
-                        }, React.createElement(X, { size: 16 }))
-                      )
-                    ),
-                    React.createElement('button', {
-                      onClick: addIngredientField,
-                      className: "flex items-center space-x-1 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
-                    },
-                      React.createElement(Plus, { size: 14 }),
-                      React.createElement('span', null, "Add Ingredient")
-                    )
-                  )
-                ),
+                    {/* Ingredients Input */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Ingredients
+                      </label>
+                      <div className="space-y-2">
+                        {newMealIngredients.map((ingredient, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <input
+                              type="text"
+                              value={ingredient}
+                              onChange={(e) => updateIngredient(index, e.target.value)}
+                              placeholder="Enter ingredient..."
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            {newMealIngredients.length > 1 && (
+                              <button
+                                onClick={() => removeIngredientField(index)}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-md"
+                              >
+                                <span>❌</span>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={addIngredientField}
+                          className="flex items-center space-x-1 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                        >
+                          <span>➕</span>
+                          <span>Add Ingredient</span>
+                        </button>
+                      </div>
+                    </div>
 
-                // Action Buttons
-                React.createElement('div', { className: "flex items-center space-x-3" },
-                  React.createElement('button', {
-                    onClick: saveNewMeal,
-                    disabled: !newMealName.trim(),
-                    className: "flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                  },
-                    React.createElement(Save, { size: 16 }),
-                    React.createElement('span', null, editingMealIndex >= 0 ? 'Update Meal' : 'Save Meal')
-                  ),
-                  React.createElement('button', {
-                    onClick: cancelAddMeal,
-                    className: "px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
-                  }, "Cancel")
-                )
-              )
-            ),
+                    {/* Action Buttons */}
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={saveNewMeal}
+                        disabled={!newMealName.trim()}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <span>💾</span>
+                        <span>{editingMealIndex >= 0 ? 'Update Meal' : 'Save Meal'}</span>
+                      </button>
+                      <button
+                        onClick={cancelAddMeal}
+                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-            // Meal Count Selector
-            React.createElement('div', { className: "bg-blue-50 p-6 rounded-lg mb-6" },
-              React.createElement('label', { className: "block text-lg font-medium text-gray-700 mb-3" },
-                "How many meals do you want to plan?"
-              ),
-              React.createElement('div', { className: "flex items-center space-x-4" },
-                React.createElement('input', {
-                  type: "number",
-                  min: "1",
-                  max: "14",
-                  value: mealCount,
-                  onChange: (e) => setMealCount(parseInt(e.target.value) || 1),
-                  className: "w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                }),
-                React.createElement('button', {
-                  onClick: generateRandomMeals,
-                  className: "flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                },
-                  React.createElement(Shuffle, { size: 16 }),
-                  React.createElement('span', null, "Generate New Plan")
-                )
-              )
-            ),
+              {/* Meal Count Selector */}
+              <div className="bg-blue-50 p-6 rounded-lg mb-6">
+                <label className="block text-lg font-medium text-gray-700 mb-3">
+                  How many meals do you want to plan?
+                </label>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="number"
+                    min="1"
+                    max="14"
+                    value={mealCount}
+                    onChange={(e) => setMealCount(parseInt(e.target.value) || 1)}
+                    className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={generateRandomMeals}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    <span>🎲</span>
+                    <span>Generate New Plan</span>
+                  </button>
+                </div>
+              </div>
 
-            // Meal List
-            selectedMeals.length > 0 && React.createElement('div', { className: "mb-6" },
-              React.createElement('h2', { className: "text-xl font-semibold text-gray-800 mb-4" }, "Your Meal Plan"),
-              React.createElement('div', { className: "space-y-3" },
-                selectedMeals.map((meal, index) =>
-                  React.createElement('div', { key: index, className: "flex items-center justify-between bg-gray-50 p-4 rounded-lg" },
-                    React.createElement('div', null,
-                      React.createElement('h3', { className: "font-medium text-gray-800" }, meal.name),
-                      React.createElement('p', { className: "text-sm text-gray-600" },
-                        meal.ingredients && meal.ingredients.length > 0 
-                          ? (meal.ingredients.slice(0, 4).join(', ') + 
-                             (meal.ingredients.length > 4 ? ` + ${meal.ingredients.length - 4} more` : ''))
-                          : 'No ingredients listed'
-                      )
-                    ),
-                    React.createElement('button', {
-                      onClick: () => replaceMeal(index),
-                      className: "flex items-center space-x-1 px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-                    },
-                      React.createElement(RefreshCw, { size: 14 }),
-                      React.createElement('span', null, "Replace")
-                    )
-                  )
-                )
-              )
-            ),
+              {/* Meal List */}
+              {selectedMeals.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">Your Meal Plan</h2>
+                  <div className="space-y-3">
+                    {selectedMeals.map((meal, index) => (
+                      <div key={index} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+                        <div>
+                          <h3 className="font-medium text-gray-800">{meal.name}</h3>
+                          <p className="text-sm text-gray-600">
+                            {meal.ingredients && meal.ingredients.length > 0 
+                              ? (meal.ingredients.slice(0, 4).join(', ') + 
+                                 (meal.ingredients.length > 4 ? ` + ${meal.ingredients.length - 4} more` : ''))
+                              : 'No ingredients listed'
+                            }
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => replaceMeal(index)}
+                          className="flex items-center space-x-1 px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
+                        >
+                          <span>🔄</span>
+                          <span>Replace</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-            // Generate Grocery List Button
-            selectedMeals.length > 0 && React.createElement('div', { className: "mb-6" },
-              selectedMeals.some(meal => meal.ingredients && meal.ingredients.length > 0) ?
-                React.createElement('button', {
-                  onClick: () => setShowGroceryList(!showGroceryList),
-                  className: "flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                },
-                  React.createElement(ShoppingCart, { size: 16 }),
-                  React.createElement('span', null, showGroceryList ? 'Hide' : 'Show', ' Grocery List')
-                ) :
-                React.createElement('div', { className: "bg-yellow-50 p-4 rounded-lg" },
-                  React.createElement('p', { className: "text-sm text-gray-700" },
-                    React.createElement('strong', null, "Note:"), " Add ingredients to your meals to generate a grocery list!"
-                  )
-                )
-            ),
+              {/* Generate Grocery List Button */}
+              {selectedMeals.length > 0 && (
+                <div className="mb-6">
+                  {selectedMeals.some(meal => meal.ingredients && meal.ingredients.length > 0) ? (
+                    <button
+                      onClick={() => setShowGroceryList(!showGroceryList)}
+                      className="flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                    >
+                      <span>🛒</span>
+                      <span>{showGroceryList ? 'Hide' : 'Show'} Grocery List</span>
+                    </button>
+                  ) : (
+                    <div className="bg-yellow-50 p-4 rounded-lg">
+                      <p className="text-sm text-gray-700">
+                        <strong>Note:</strong> Add ingredients to your meals to generate a grocery list!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-            // Grocery List
-            showGroceryList && selectedMeals.length > 0 && React.createElement('div', { className: "bg-green-50 p-6 rounded-lg" },
-              React.createElement('h2', { className: "text-xl font-semibold text-gray-800 mb-4" }, "Grocery List"),
-              generateGroceryList().length > 0 ?
-                React.createElement(React.Fragment, null,
-                  React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2" },
-                    generateGroceryList().map(([ingredient, count]) =>
-                      React.createElement('div', { key: ingredient, className: "flex items-center justify-between bg-white p-2 rounded border" },
-                        React.createElement('span', { className: "text-gray-700 capitalize" }, ingredient),
-                        count > 1 && React.createElement('span', { className: "text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full" },
-                          `x${count}`
-                        )
-                      )
-                    )
-                  ),
-                  React.createElement('div', { className: "mt-4 text-sm text-gray-600" },
-                    `Total items: ${generateGroceryList().length}`
-                  )
-                ) :
-                React.createElement('p', { className: "text-gray-600" }, "No ingredients found in selected meals. Add ingredients to meals to generate a grocery list!")
-            ),
+              {/* Grocery List */}
+              {showGroceryList && selectedMeals.length > 0 && (
+                <div className="bg-green-50 p-6 rounded-lg">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4">Grocery List</h2>
+                  {generateGroceryList().length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {generateGroceryList().map(([ingredient, count]) => (
+                          <div key={ingredient} className="flex items-center justify-between bg-white p-2 rounded border">
+                            <span className="text-gray-700 capitalize">{ingredient}</span>
+                            {count > 1 && (
+                              <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">
+                                x{count}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 text-sm text-gray-600">
+                        Total items: {generateGroceryList().length}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-gray-600">No ingredients found in selected meals. Add ingredients to meals to generate a grocery list!</p>
+                  )}
+                </div>
+              )}
 
-            // Instructions
-            React.createElement('div', { className: "mt-8 p-4 bg-blue-50 rounded-lg" },
-              React.createElement('h3', { className: "font-medium text-gray-800 mb-2" }, "Your Meal Database is Ready!"),
-              React.createElement('p', { className: "text-sm text-gray-600 mb-2" },
-                "I've loaded all 113 of your historic meals. The meal planner is fully functional for selecting and planning meals."
-              ),
-              React.createElement('p', { className: "text-sm text-gray-600" },
-                React.createElement('strong', null, "Next step:"), " To enable the grocery list feature, you can add ingredient arrays to each meal in the code. For example: ",
-                React.createElement('code', { className: "bg-gray-200 px-1 rounded" }, 'ingredients: ["chicken", "pasta", "alfredo sauce"]')
-              )
-            )
+              {/* Instructions */}
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+                <h3 className="font-medium text-gray-800 mb-2">Your Meal Database is Ready!</h3>
+                <p className="text-sm text-gray-600 mb-2">
+                  I've loaded all 113 of your historic meals. The meal planner is fully functional for selecting and planning meals.
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Next step:</strong> To enable the grocery list feature, you can add ingredient arrays to each meal in the code. 
+                  For example: <code className="bg-gray-200 px-1 rounded">ingredients: ["chicken", "pasta", "alfredo sauce"]</code>
+                </p>
+              </div>
+            </div>
           );
         };
 
         const container = document.getElementById('root');
         const root = createRoot(container);
-        root.render(React.createElement(MealPlanner));
+        root.render(<MealPlanner />);
     </script>
 </body>
 </html>
