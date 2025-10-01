@@ -10,6 +10,9 @@
     <!-- Lucide icons will be replaced with simple text -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Google Identity Services for OAuth2 -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
     <!-- Google Sheets Integration - Inline for GitHub Pages compatibility -->
     <script>
         // Google Sheets API Configuration
@@ -17,47 +20,140 @@
           // Your Google Sheet ID (hardcoded - users don't need to change this)
           SHEET_ID: '1SaP6Xl0Noi3RTBvuk5Rwthrh83_of4MlxFF6ZT3KHAc',
           
+          // OAuth2 Configuration - Replace with your actual client ID
+          OAUTH_CLIENT_ID: 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com',
+          
           // The range in your sheet where meal data is stored
           // Expected format: Column A = Meal Name, Column B and beyond = Ingredients
           SHEET_RANGE: 'Sheet1!A:Z',
           
           // Google Sheets API endpoint
-          API_BASE_URL: 'https://sheets.googleapis.com/v4/spreadsheets'
+          API_BASE_URL: 'https://sheets.googleapis.com/v4/spreadsheets',
+          
+          // OAuth2 scopes for Google Sheets read/write access
+          OAUTH_SCOPES: 'https://www.googleapis.com/auth/spreadsheets'
         };
 
-        // Google Sheets API Service
+        // Google Sheets API Service with OAuth2
         class GoogleSheetsService {
           constructor() {
             this.config = CONFIG;
             this.isLoading = false;
+            this.isAuthenticated = false;
+            this.accessToken = null;
+            this.tokenClient = null;
+          }
+
+          /**
+           * Initialize OAuth2 token client
+           */
+          async initializeOAuth() {
+            if (!this.config.OAUTH_CLIENT_ID || this.config.OAUTH_CLIENT_ID === 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com') {
+              throw new Error('Please configure your OAuth2 client ID in the CONFIG section');
+            }
+
+            return new Promise((resolve, reject) => {
+              if (typeof google === 'undefined' || !google.accounts) {
+                reject(new Error('Google Identity Services not loaded'));
+                return;
+              }
+
+              this.tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: this.config.OAUTH_CLIENT_ID,
+                scope: this.config.OAUTH_SCOPES,
+                callback: (response) => {
+                  if (response.error) {
+                    reject(new Error(response.error));
+                    return;
+                  }
+                  this.accessToken = response.access_token;
+                  this.isAuthenticated = true;
+                  resolve(response);
+                },
+              });
+              
+              resolve(this.tokenClient);
+            });
+          }
+
+          /**
+           * Sign in with Google OAuth2
+           */
+          async signIn() {
+            try {
+              if (!this.tokenClient) {
+                await this.initializeOAuth();
+              }
+              
+              this.tokenClient.requestAccessToken();
+            } catch (error) {
+              console.error('OAuth sign-in error:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Sign out and revoke access token
+           */
+          async signOut() {
+            if (this.accessToken) {
+              google.accounts.oauth2.revoke(this.accessToken);
+            }
+            this.accessToken = null;
+            this.isAuthenticated = false;
+          }
+
+          /**
+           * Make authenticated request to Google Sheets API
+           */
+          async makeAuthenticatedRequest(url, options = {}) {
+            if (!this.isAuthenticated || !this.accessToken) {
+              throw new Error('Not authenticated. Please sign in first.');
+            }
+
+            const headers = {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json',
+              ...options.headers
+            };
+
+            const response = await fetch(url, {
+              ...options,
+              headers
+            });
+
+            if (!response.ok) {
+              if (response.status === 401) {
+                // Token expired, user needs to re-authenticate
+                this.isAuthenticated = false;
+                this.accessToken = null;
+                throw new Error('Authentication expired. Please sign in again.');
+              } else if (response.status === 403) {
+                throw new Error('Permission denied. Please ensure you have granted access to Google Sheets.');
+              } else {
+                const errorText = await response.text();
+                throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+              }
+            }
+
+            return response;
           }
 
           /**
            * Read data from Google Sheets
            * @returns {Promise<Array>} Array of meal objects
            */
-          async readMeals(apiKey) {
-            if (!apiKey || !this.config.SHEET_ID) {
-              throw new Error('Please provide your Google Sheets API key');
+          async readMeals() {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
             }
 
             this.isLoading = true;
             
             try {
-              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.SHEET_RANGE}?key=${apiKey}`;
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.SHEET_RANGE}`;
               
-              const response = await fetch(url);
-              
-              if (!response.ok) {
-                if (response.status === 403) {
-                  throw new Error('API key is invalid or doesn\'t have permission to access this sheet');
-                } else if (response.status === 404) {
-                  throw new Error('Sheet not found. Check your Sheet ID');
-                } else {
-                  throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
-                }
-              }
-
+              const response = await this.makeAuthenticatedRequest(url);
               const data = await response.json();
               
               if (!data.values || data.values.length === 0) {
@@ -88,36 +184,28 @@
           /**
            * Write a new meal to Google Sheets
            * @param {Object} meal - Meal object with name and ingredients
-           * @param {string} apiKey - User's API key
            * @returns {Promise<boolean>} Success status
            */
-          async addMeal(meal, apiKey) {
-            if (!apiKey || !this.config.SHEET_ID) {
-              throw new Error('Please provide your Google Sheets API key');
+          async addMeal(meal) {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
             }
 
             try {
               // First, get current data to find the next empty row
-              const currentMeals = await this.readMeals(apiKey);
+              const currentMeals = await this.readMeals();
               const nextRow = currentMeals.length + 2; // +2 because we start from row 2 (after header)
               
               const rowData = [meal.name, ...meal.ingredients];
               
-              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${nextRow}:append?valueInputOption=RAW&key=${apiKey}`;
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${nextRow}:append?valueInputOption=RAW`;
               
-              const response = await fetch(url, {
+              await this.makeAuthenticatedRequest(url, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({
                   values: [rowData]
                 })
               });
-
-              if (!response.ok) {
-                throw new Error(`Failed to add meal: ${response.status} ${response.statusText}`);
-              }
 
               return true;
             } catch (error) {
@@ -130,12 +218,11 @@
            * Update an existing meal in Google Sheets
            * @param {number} rowIndex - The row index (0-based) of the meal to update
            * @param {Object} meal - Updated meal object
-           * @param {string} apiKey - User's API key
            * @returns {Promise<boolean>} Success status
            */
-          async updateMeal(rowIndex, meal, apiKey) {
-            if (!apiKey || !this.config.SHEET_ID) {
-              throw new Error('Please provide your Google Sheets API key');
+          async updateMeal(rowIndex, meal) {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
             }
 
             try {
@@ -143,39 +230,52 @@
               const rowData = [meal.name, ...meal.ingredients];
               
               // Clear the row first by getting the current range
-              const clearUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}:Z${sheetRow}:clear?key=${apiKey}`;
+              const clearUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}:Z${sheetRow}:clear`;
               
-              const clearResponse = await fetch(clearUrl, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                }
+              await this.makeAuthenticatedRequest(clearUrl, {
+                method: 'POST'
               });
 
-              if (!clearResponse.ok) {
-                throw new Error(`Failed to clear row: ${clearResponse.status} ${clearResponse.statusText}`);
-              }
-
               // Now update with new data
-              const updateUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}?valueInputOption=RAW&key=${apiKey}`;
+              const updateUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}?valueInputOption=RAW`;
               
-              const updateResponse = await fetch(updateUrl, {
+              await this.makeAuthenticatedRequest(updateUrl, {
                 method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({
                   values: [rowData]
                 })
               });
 
-              if (!updateResponse.ok) {
-                throw new Error(`Failed to update meal: ${updateResponse.status} ${updateResponse.statusText}`);
-              }
-
               return true;
             } catch (error) {
               console.error('Error updating meal in Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Delete a meal from Google Sheets
+           * @param {number} rowIndex - The row index (0-based) of the meal to delete
+           * @returns {Promise<boolean>} Success status
+           */
+          async deleteMeal(rowIndex) {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
+            }
+
+            try {
+              const sheetRow = rowIndex + 2; // +2 because we start from row 2 (after header)
+              
+              // Clear the entire row
+              const clearUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}:Z${sheetRow}:clear`;
+              
+              await this.makeAuthenticatedRequest(clearUrl, {
+                method: 'POST'
+              });
+
+              return true;
+            } catch (error) {
+              console.error('Error deleting meal from Google Sheets:', error);
               throw error;
             }
           }
@@ -223,8 +323,8 @@
           const [isLoadingSheets, setIsLoadingSheets] = useState(false);
           const [sheetsError, setSheetsError] = useState(null);
           const [useLocalData, setUseLocalData] = useState(true);
-          const [apiKey, setApiKey] = useState('');
-          const [apiKeyValid, setApiKeyValid] = useState(false);
+          const [isSignedIn, setIsSignedIn] = useState(false);
+          const [userInfo, setUserInfo] = useState(null);
 
           // Your historic meals (fallback data)
           const sampleMeals = [
@@ -366,22 +466,63 @@
           const [editingMealIndex, setEditingMealIndex] = useState(-1);
           const [showMealList, setShowMealList] = useState(false);
 
+          // Sign in with Google OAuth2
+          const signInWithGoogle = async () => {
+            setIsLoadingSheets(true);
+            setSheetsError(null);
+            
+            try {
+              await sheetsService.signIn();
+              setIsSignedIn(true);
+              
+              // Load meals after successful sign-in
+              if (!useLocalData) {
+                await loadMealsFromSheets();
+              }
+            } catch (error) {
+              console.error('Failed to sign in:', error);
+              setSheetsError(error.message);
+              setIsSignedIn(false);
+            } finally {
+              setIsLoadingSheets(false);
+            }
+          };
+
+          // Sign out from Google OAuth2
+          const signOutFromGoogle = async () => {
+            try {
+              await sheetsService.signOut();
+              setIsSignedIn(false);
+              setUserInfo(null);
+              
+              // Switch back to local data
+              if (!useLocalData) {
+                setUseLocalData(true);
+                setAllMeals(sampleMeals);
+              }
+            } catch (error) {
+              console.error('Failed to sign out:', error);
+              setSheetsError(error.message);
+            }
+          };
+
           // Load meals from Google Sheets
           const loadMealsFromSheets = async () => {
-            if (useLocalData || !apiKey.trim()) return;
+            if (useLocalData || !isSignedIn) return;
             
             setIsLoadingSheets(true);
             setSheetsError(null);
             
             try {
-              const meals = await sheetsService.readMeals(apiKey);
+              const meals = await sheetsService.readMeals();
               setAllMeals(meals.length > 0 ? meals : sampleMeals);
-              setApiKeyValid(true);
               console.log('Loaded meals from Google Sheets:', meals.length);
             } catch (error) {
               console.error('Failed to load from Google Sheets:', error);
               setSheetsError(error.message);
-              setApiKeyValid(false);
+              if (error.message.includes('Authentication expired')) {
+                setIsSignedIn(false);
+              }
               setAllMeals(sampleMeals); // Fallback to local data
             } finally {
               setIsLoadingSheets(false);
@@ -390,53 +531,54 @@
 
           // Save meal to Google Sheets
           const saveMealToSheets = async (meal, isUpdate = false, originalIndex = -1) => {
-            if (useLocalData || !apiKey.trim()) return true;
+            if (useLocalData || !isSignedIn) return true;
             
             try {
               if (isUpdate) {
-                await sheetsService.updateMeal(originalIndex, meal, apiKey);
+                await sheetsService.updateMeal(originalIndex, meal);
               } else {
-                await sheetsService.addMeal(meal, apiKey);
+                await sheetsService.addMeal(meal);
               }
               return true;
             } catch (error) {
               console.error('Failed to save to Google Sheets:', error);
               setSheetsError(error.message);
-              setApiKeyValid(false);
+              if (error.message.includes('Authentication expired')) {
+                setIsSignedIn(false);
+              }
               return false;
             }
           };
 
-          // Test API key
-          const testApiKey = async () => {
-            if (!apiKey.trim()) {
-              setSheetsError('Please enter an API key');
-              return;
-            }
-            
-            setIsLoadingSheets(true);
-            setSheetsError(null);
-            
+          // Initialize OAuth2 when component mounts
+          const initializeOAuth = async () => {
             try {
-              await sheetsService.readMeals(apiKey);
-              setApiKeyValid(true);
-              setSheetsError(null);
+              await sheetsService.initializeOAuth();
             } catch (error) {
-              setApiKeyValid(false);
+              console.error('Failed to initialize OAuth:', error);
               setSheetsError(error.message);
-            } finally {
-              setIsLoadingSheets(false);
             }
           };
 
           // Toggle between local and Google Sheets data
-          const toggleDataSource = () => {
+          const toggleDataSource = async () => {
             const newUseLocalData = !useLocalData;
             setUseLocalData(newUseLocalData);
             
-            if (!newUseLocalData && apiKey.trim()) {
-              // Switching to Google Sheets
-              loadMealsFromSheets();
+            if (!newUseLocalData) {
+              // Switching to Google Sheets - need to sign in
+              if (!isSignedIn) {
+                try {
+                  await signInWithGoogle();
+                } catch (error) {
+                  // If sign-in fails, revert back to local data
+                  setUseLocalData(true);
+                  setAllMeals(sampleMeals);
+                }
+              } else {
+                // Already signed in, just load data
+                await loadMealsFromSheets();
+              }
             } else {
               // Switching to local data
               setAllMeals(sampleMeals);
@@ -561,11 +703,9 @@
             }
           }, [mealCount]);
 
-          // Load meals from Google Sheets on component mount
+          // Initialize OAuth2 on component mount
           useEffect(() => {
-            if (!useLocalData) {
-              loadMealsFromSheets();
-            }
+            initializeOAuth();
           }, []);
 
           return (
@@ -578,7 +718,7 @@
                   <div>
                     <h2 className="text-lg font-medium text-gray-800">Data Source</h2>
                     <p className="text-sm text-gray-600">
-                      Choose between local data or Google Sheets integration
+                      Choose between local data or Google Sheets integration with OAuth2
                     </p>
                   </div>
                   <div className="flex items-center space-x-4">
@@ -596,39 +736,51 @@
                   </div>
                 </div>
                 
-                {/* API Key Input */}
+                {/* OAuth2 Authentication */}
                 {!useLocalData && (
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Google Sheets API Key
+                      Google Authentication
                     </label>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="Enter your Google Sheets API key..."
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        onClick={testApiKey}
-                        disabled={isLoadingSheets || !apiKey.trim()}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
-                      >
-                        {isLoadingSheets ? 'Testing...' : 'Test'}
-                      </button>
-                      {apiKeyValid && (
+                    
+                    {!isSignedIn ? (
+                      <div className="flex items-center space-x-2">
                         <button
-                          onClick={loadMealsFromSheets}
+                          onClick={signInWithGoogle}
                           disabled={isLoadingSheets}
-                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors"
+                          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
                         >
-                          Load Data
+                          <span>🔐</span>
+                          <span>{isLoadingSheets ? 'Signing in...' : 'Sign in with Google'}</span>
                         </button>
-                      )}
-                    </div>
-                    {apiKeyValid && (
-                      <p className="text-sm text-green-600 mt-1">✓ API key is valid</p>
+                        <p className="text-sm text-gray-600">
+                          Sign in to read and write meal data to Google Sheets
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg border border-green-200">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-green-600">✓</span>
+                          <span className="text-sm text-green-800 font-medium">
+                            Signed in to Google Sheets
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={loadMealsFromSheets}
+                            disabled={isLoadingSheets}
+                            className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 transition-colors text-sm"
+                          >
+                            {isLoadingSheets ? 'Loading...' : 'Refresh Data'}
+                          </button>
+                          <button
+                            onClick={signOutFromGoogle}
+                            className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm"
+                          >
+                            Sign Out
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -639,7 +791,10 @@
                     <h3 className="font-medium text-red-800 mb-2">Google Sheets Error</h3>
                     <p className="text-sm text-red-700 mb-3">{sheetsError}</p>
                     <p className="text-xs text-red-600">
-                      Using local data as fallback. Please check your API key and try again.
+                      {sheetsError.includes('Authentication expired') ? 
+                        'Please sign in again to continue using Google Sheets.' :
+                        'Using local data as fallback. Please check your configuration and try again.'
+                      }
                     </p>
                   </div>
                 )}
@@ -649,7 +804,7 @@
                   <strong>Status:</strong> {useLocalData ? 'Using local data' : 
                     isLoadingSheets ? 'Loading from Google Sheets...' : 
                     sheetsError ? 'Using local data (Google Sheets error)' : 
-                    apiKeyValid ? 'Connected to Google Sheets' : 'Enter API key to connect'}
+                    isSignedIn ? 'Connected to Google Sheets' : 'Sign in to connect to Google Sheets'}
                 </div>
               </div>
               
@@ -892,17 +1047,17 @@
 
               {/* Instructions */}
               <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-medium text-gray-800 mb-2">Meal Planner with Google Sheets Integration!</h3>
+                <h3 className="font-medium text-gray-800 mb-2">Meal Planner with Google Sheets OAuth2 Integration!</h3>
                 <p className="text-sm text-gray-600 mb-2">
                   {useLocalData ? 
-                    'Currently using local data with 113 historic meals. Enable Google Sheets integration above and enter your API key to sync with the spreadsheet.' :
-                    apiKeyValid ? 
-                      'Google Sheets integration is enabled and connected. Your meals will be saved to and loaded from the Google Sheet.' :
-                      'Google Sheets integration is enabled. Enter your API key above to connect.'
+                    'Currently using local data with 113 historic meals. Enable Google Sheets integration above and sign in with your Google account to sync with the spreadsheet.' :
+                    isSignedIn ? 
+                      'Google Sheets integration is enabled and connected. Your meals will be saved to and loaded from the Google Sheet with full read/write access.' :
+                      'Google Sheets integration is enabled. Sign in with your Google account above to connect with full access.'
                   }
                 </p>
                 <p className="text-sm text-gray-600">
-                  <strong>Setup:</strong> Get your Google Sheets API key from Google Cloud Console and enter it above. The sheet is already configured for you.
+                  <strong>Setup:</strong> Configure OAuth2 in Google Cloud Console and update the OAUTH_CLIENT_ID in the code. OAuth2 provides secure authentication and full read/write access to your Google Sheets.
                 </p>
               </div>
             </div>
