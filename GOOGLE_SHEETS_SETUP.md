@@ -107,17 +107,17 @@ This guide will help you set up Google Sheets OAuth2 integration for your Meal P
    - Grant permission to access your Google Sheets
    - You should be redirected back to your app
 
-3. **Test Adding a Meal and Saving Meal Plans**
-   - Add a new meal with ingredients
-   - Check your Google Sheet to see if the data appears
-   - Generate a meal plan with several meals
-   - Click "Save Plan" and give it a name
-   - Check the "MealPlans" sheet to see your saved plan
-   - Try loading the saved plan using "Load Plan"
+3. **Test All Features**
+   - **Meals**: Add a new meal with ingredients and check Sheet1
+   - **Meal Plans**: Generate a meal plan and save it with a name
+   - **Slot Selection**: Click "Change" on any meal slot to search and select specific meals
+   - **Ingredients**: Use the "Manage Ingredients" button to add ingredients to the Ingredients sheet
+   - **Search**: Use the meal search feature to find and add specific meals to slots
+   - Check all three sheets (Sheet1, MealPlans, Ingredients) to verify data is saved correctly
 
 ## Expected Sheet Format
 
-Your Google Sheet should have two sheets:
+Your Google Sheet will automatically have three sheets created:
 
 ### Sheet1 (Meals Database)
 | Meal Name | Ingredient 1 | Ingredient 2 | Ingredient 3 | Ingredient 4 | Ingredient 5 |
@@ -126,12 +126,22 @@ Your Google Sheet should have two sheets:
 | Chicken Tacos | chicken | tortillas | lettuce | cheese | salsa |
 
 ### MealPlans (Saved Meal Plans)
-The app will automatically create a second sheet called "MealPlans" to store your saved meal plans:
+The app automatically creates a second sheet called "MealPlans" to store your saved meal plans:
 
 | Plan Name | Date | Meal Count | Meal 1 | Meal 2 | Meal 3 | Meal 4 | Meal 5 | Meal 6 | Meal 7 |
 |-----------|------|------------|--------|--------|--------|--------|--------|--------|--------|
 | Weekly Plan 1 | 10/1/2025 | 7 | Spaghetti | Chicken Tacos | Pizza | Salmon | Stir fry | Burgers | Lasagna |
 | Weekend Special | 10/1/2025 | 3 | Steak & lobster | Crab legs | Hibachi filet mignon | | | | |
+
+### Ingredients (Ingredients Database)
+The app automatically creates a third sheet called "Ingredients" to store your ingredients database:
+
+| Ingredient Name | Category | Date Added |
+|-----------------|----------|------------|
+| Ground Beef | Protein | 10/1/2025 |
+| Pasta | Grains | 10/1/2025 |
+| Tomato Sauce | Pantry | 10/1/2025 |
+| Cheddar Cheese | Dairy | 10/1/2025 |
 
 ## Troubleshooting
 
@@ -202,6 +212,17 @@ For production deployment:
 - Load previously saved meal plans
 - Automatic date tracking for saved plans
 - Separate sheet organization for easy management
+
+### Advanced Meal Plan Management
+- **Slot-based Selection**: Click "Change" on any meal slot to search and select specific meals
+- **Meal Search**: Search through your meal database to find specific meals
+- **Smart Replacement**: Use random replacement or targeted search for each slot
+
+### Ingredients Database Management
+- Save ingredients to a separate dedicated sheet
+- Organize ingredients by categories (Protein, Vegetables, Dairy, etc.)
+- Track when ingredients were added
+- Browse ingredients by category for easy organization
 
 ## Support
 
