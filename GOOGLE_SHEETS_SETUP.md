@@ -107,18 +107,31 @@ This guide will help you set up Google Sheets OAuth2 integration for your Meal P
    - Grant permission to access your Google Sheets
    - You should be redirected back to your app
 
-3. **Test Adding a Meal**
+3. **Test Adding a Meal and Saving Meal Plans**
    - Add a new meal with ingredients
    - Check your Google Sheet to see if the data appears
+   - Generate a meal plan with several meals
+   - Click "Save Plan" and give it a name
+   - Check the "MealPlans" sheet to see your saved plan
+   - Try loading the saved plan using "Load Plan"
 
 ## Expected Sheet Format
 
-Your Google Sheet should look like this:
+Your Google Sheet should have two sheets:
 
+### Sheet1 (Meals Database)
 | Meal Name | Ingredient 1 | Ingredient 2 | Ingredient 3 | Ingredient 4 | Ingredient 5 |
 |-----------|--------------|--------------|--------------|--------------|--------------|
 | Spaghetti | pasta        | tomato sauce | ground beef  | parmesan     | basil        |
 | Chicken Tacos | chicken | tortillas | lettuce | cheese | salsa |
+
+### MealPlans (Saved Meal Plans)
+The app will automatically create a second sheet called "MealPlans" to store your saved meal plans:
+
+| Plan Name | Date | Meal Count | Meal 1 | Meal 2 | Meal 3 | Meal 4 | Meal 5 | Meal 6 | Meal 7 |
+|-----------|------|------------|--------|--------|--------|--------|--------|--------|--------|
+| Weekly Plan 1 | 10/1/2025 | 7 | Spaghetti | Chicken Tacos | Pizza | Salmon | Stir fry | Burgers | Lasagna |
+| Weekend Special | 10/1/2025 | 3 | Steak & lobster | Crab legs | Hibachi filet mignon | | | | |
 
 ## Troubleshooting
 
@@ -165,11 +178,30 @@ For production deployment:
 
 ## Privacy and Data
 
-- Your meal data is stored in the user's own Google Sheet
+- Your meal data is stored in the user's own Google Sheet (Sheet1)
+- Your saved meal plans are stored in the user's own Google Sheet (MealPlans sheet)
 - The app only accesses sheets that the user explicitly grants permission for
 - No data is stored on external servers (besides the user's Google Sheets)
 - Users can revoke access at any time through Google account settings
 - Authentication tokens are temporary and automatically refreshed
+
+## Features
+
+### Meal Database Management
+- Add, edit, and manage your meal database
+- Store ingredients for each meal
+- Full CRUD operations with Google Sheets sync
+
+### Meal Planning
+- Generate random meal plans with customizable meal counts
+- Replace individual meals in your plan
+- Generate grocery lists from selected meals
+
+### Meal Plan Persistence
+- Save your generated meal plans with custom names
+- Load previously saved meal plans
+- Automatic date tracking for saved plans
+- Separate sheet organization for easy management
 
 ## Support
 

@@ -27,6 +27,10 @@
           // Expected format: Column A = Meal Name, Column B and beyond = Ingredients
           SHEET_RANGE: 'Sheet1!A:Z',
           
+          // Meal Plans Sheet Configuration
+          MEAL_PLANS_SHEET: 'MealPlans',
+          MEAL_PLANS_RANGE: 'MealPlans!A:Z',
+          
           // Google Sheets API endpoint
           API_BASE_URL: 'https://sheets.googleapis.com/v4/spreadsheets',
           
@@ -279,6 +283,178 @@
               throw error;
             }
           }
+
+          /**
+           * Save a meal plan to Google Sheets
+           * @param {Object} mealPlan - Meal plan object with name, date, and meals
+           * @returns {Promise<boolean>} Success status
+           */
+          async saveMealPlan(mealPlan) {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
+            }
+
+            try {
+              // Ensure the MealPlans sheet exists by trying to read it first
+              await this.ensureMealPlansSheetExists();
+              
+              // Get current meal plans to find the next empty row
+              const currentPlans = await this.loadMealPlans();
+              const nextRow = currentPlans.length + 2; // +2 because we start from row 2 (after header)
+              
+              // Format: Plan Name | Date | Meal Count | Meal 1 | Meal 2 | Meal 3 | ...
+              const rowData = [
+                mealPlan.name,
+                mealPlan.date,
+                mealPlan.meals.length,
+                ...mealPlan.meals.map(meal => meal.name)
+              ];
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.MEAL_PLANS_SHEET}!A${nextRow}:append?valueInputOption=RAW`;
+              
+              await this.makeAuthenticatedRequest(url, {
+                method: 'POST',
+                body: JSON.stringify({
+                  values: [rowData]
+                })
+              });
+
+              return true;
+            } catch (error) {
+              console.error('Error saving meal plan to Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Load meal plans from Google Sheets
+           * @returns {Promise<Array>} Array of meal plan objects
+           */
+          async loadMealPlans() {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
+            }
+
+            try {
+              // Ensure the MealPlans sheet exists
+              await this.ensureMealPlansSheetExists();
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.MEAL_PLANS_RANGE}`;
+              
+              const response = await this.makeAuthenticatedRequest(url);
+              const data = await response.json();
+              
+              if (!data.values || data.values.length === 0) {
+                return [];
+              }
+
+              // Convert sheet data to meal plan objects
+              const mealPlans = data.values.slice(1).map(row => {
+                if (!row[0] || row[0].trim() === '') return null;
+                
+                const mealCount = parseInt(row[2]) || 0;
+                const meals = [];
+                
+                // Extract meal names starting from column 4 (index 3)
+                for (let i = 3; i < 3 + mealCount && i < row.length; i++) {
+                  if (row[i] && row[i].trim()) {
+                    meals.push({ name: row[i].trim() });
+                  }
+                }
+                
+                return {
+                  name: row[0].trim(),
+                  date: row[1] || '',
+                  mealCount: mealCount,
+                  meals: meals
+                };
+              }).filter(plan => plan !== null);
+
+              return mealPlans;
+            } catch (error) {
+              console.error('Error loading meal plans from Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Ensure the MealPlans sheet exists, create it if it doesn't
+           * @returns {Promise<void>}
+           */
+          async ensureMealPlansSheetExists() {
+            try {
+              // Try to read from the MealPlans sheet to see if it exists
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.MEAL_PLANS_SHEET}!A1:A1`;
+              
+              try {
+                await this.makeAuthenticatedRequest(url);
+                // Sheet exists, check if it has headers
+                await this.ensureMealPlansHeaders();
+              } catch (error) {
+                if (error.message.includes('Unable to parse range')) {
+                  // Sheet doesn't exist, create it
+                  await this.createMealPlansSheet();
+                } else {
+                  throw error;
+                }
+              }
+            } catch (error) {
+              console.error('Error ensuring MealPlans sheet exists:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Create the MealPlans sheet with proper headers
+           * @returns {Promise<void>}
+           */
+          async createMealPlansSheet() {
+            try {
+              // Add a new sheet to the spreadsheet
+              const addSheetUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}:batchUpdate`;
+              
+              await this.makeAuthenticatedRequest(addSheetUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                  requests: [{
+                    addSheet: {
+                      properties: {
+                        title: this.config.MEAL_PLANS_SHEET
+                      }
+                    }
+                  }]
+                })
+              });
+
+              // Add headers to the new sheet
+              await this.ensureMealPlansHeaders();
+            } catch (error) {
+              console.error('Error creating MealPlans sheet:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Ensure the MealPlans sheet has proper headers
+           * @returns {Promise<void>}
+           */
+          async ensureMealPlansHeaders() {
+            try {
+              const headers = ['Plan Name', 'Date', 'Meal Count', 'Meal 1', 'Meal 2', 'Meal 3', 'Meal 4', 'Meal 5', 'Meal 6', 'Meal 7', 'Meal 8', 'Meal 9', 'Meal 10', 'Meal 11', 'Meal 12', 'Meal 13', 'Meal 14'];
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.MEAL_PLANS_SHEET}!A1?valueInputOption=RAW`;
+              
+              await this.makeAuthenticatedRequest(url, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  values: [headers]
+                })
+              });
+            } catch (error) {
+              console.error('Error setting MealPlans headers:', error);
+              throw error;
+            }
+          }
         }
 
         // Make it globally available
@@ -466,6 +642,13 @@
           const [editingMealIndex, setEditingMealIndex] = useState(-1);
           const [showMealList, setShowMealList] = useState(false);
 
+          // Meal Plan state
+          const [savedMealPlans, setSavedMealPlans] = useState([]);
+          const [showSaveMealPlan, setShowSaveMealPlan] = useState(false);
+          const [showLoadMealPlan, setShowLoadMealPlan] = useState(false);
+          const [mealPlanName, setMealPlanName] = useState('');
+          const [isLoadingMealPlans, setIsLoadingMealPlans] = useState(false);
+
           // Sign in with Google OAuth2
           const signInWithGoogle = async () => {
             setIsLoadingSheets(true);
@@ -475,9 +658,10 @@
               await sheetsService.signIn();
               setIsSignedIn(true);
               
-              // Load meals after successful sign-in
+              // Load meals and meal plans after successful sign-in
               if (!useLocalData) {
                 await loadMealsFromSheets();
+                await loadSavedMealPlans();
               }
             } catch (error) {
               console.error('Failed to sign in:', error);
@@ -558,6 +742,88 @@
               console.error('Failed to initialize OAuth:', error);
               setSheetsError(error.message);
             }
+          };
+
+          // Load saved meal plans from Google Sheets
+          const loadSavedMealPlans = async () => {
+            if (useLocalData || !isSignedIn) return;
+            
+            setIsLoadingMealPlans(true);
+            setSheetsError(null);
+            
+            try {
+              const plans = await sheetsService.loadMealPlans();
+              setSavedMealPlans(plans);
+              console.log('Loaded meal plans from Google Sheets:', plans.length);
+            } catch (error) {
+              console.error('Failed to load meal plans from Google Sheets:', error);
+              setSheetsError(error.message);
+              if (error.message.includes('Authentication expired')) {
+                setIsSignedIn(false);
+              }
+            } finally {
+              setIsLoadingMealPlans(false);
+            }
+          };
+
+          // Save current meal plan to Google Sheets
+          const saveMealPlan = async () => {
+            if (useLocalData || !isSignedIn || selectedMeals.length === 0) return;
+            
+            if (!mealPlanName.trim()) {
+              setSheetsError('Please enter a name for the meal plan');
+              return;
+            }
+
+            setIsLoadingMealPlans(true);
+            setSheetsError(null);
+            
+            try {
+              const mealPlan = {
+                name: mealPlanName.trim(),
+                date: new Date().toLocaleDateString(),
+                meals: selectedMeals
+              };
+              
+              await sheetsService.saveMealPlan(mealPlan);
+              
+              // Refresh the saved meal plans list
+              await loadSavedMealPlans();
+              
+              // Reset form
+              setMealPlanName('');
+              setShowSaveMealPlan(false);
+              
+              console.log('Meal plan saved successfully');
+            } catch (error) {
+              console.error('Failed to save meal plan:', error);
+              setSheetsError(error.message);
+              if (error.message.includes('Authentication expired')) {
+                setIsSignedIn(false);
+              }
+            } finally {
+              setIsLoadingMealPlans(false);
+            }
+          };
+
+          // Load a specific meal plan
+          const loadMealPlan = async (planIndex) => {
+            if (planIndex < 0 || planIndex >= savedMealPlans.length) return;
+            
+            const plan = savedMealPlans[planIndex];
+            
+            // Find the full meal objects from allMeals based on the plan's meal names
+            const loadedMeals = plan.meals.map(planMeal => {
+              const fullMeal = allMeals.find(meal => meal.name === planMeal.name);
+              return fullMeal || { name: planMeal.name, ingredients: [] };
+            });
+            
+            setSelectedMeals(loadedMeals);
+            setMealCount(loadedMeals.length);
+            setShowLoadMealPlan(false);
+            setShowGroceryList(false);
+            
+            console.log(`Loaded meal plan: ${plan.name}`);
           };
 
           // Toggle between local and Google Sheets data
@@ -969,7 +1235,106 @@
               {/* Meal List */}
               {selectedMeals.length > 0 && (
                 <div className="mb-6">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-4">Your Meal Plan</h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-800">Your Meal Plan</h2>
+                    
+                    {/* Meal Plan Actions */}
+                    {!useLocalData && isSignedIn && (
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setShowSaveMealPlan(!showSaveMealPlan)}
+                          className="flex items-center space-x-1 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors text-sm"
+                        >
+                          <span>💾</span>
+                          <span>Save Plan</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowLoadMealPlan(!showLoadMealPlan);
+                            if (!showLoadMealPlan) loadSavedMealPlans();
+                          }}
+                          disabled={isLoadingMealPlans}
+                          className="flex items-center space-x-1 px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 transition-colors text-sm"
+                        >
+                          <span>📂</span>
+                          <span>{isLoadingMealPlans ? 'Loading...' : 'Load Plan'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Save Meal Plan Form */}
+                  {showSaveMealPlan && !useLocalData && isSignedIn && (
+                    <div className="bg-purple-50 p-4 rounded-lg mb-4 border border-purple-200">
+                      <h3 className="font-medium text-gray-800 mb-3">Save Current Meal Plan</h3>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="text"
+                          value={mealPlanName}
+                          onChange={(e) => setMealPlanName(e.target.value)}
+                          placeholder="Enter meal plan name..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        <button
+                          onClick={saveMealPlan}
+                          disabled={!mealPlanName.trim() || isLoadingMealPlans}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {isLoadingMealPlans ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowSaveMealPlan(false);
+                            setMealPlanName('');
+                          }}
+                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Load Meal Plan List */}
+                  {showLoadMealPlan && !useLocalData && isSignedIn && (
+                    <div className="bg-indigo-50 p-4 rounded-lg mb-4 border border-indigo-200">
+                      <h3 className="font-medium text-gray-800 mb-3">Load Saved Meal Plan</h3>
+                      {savedMealPlans.length > 0 ? (
+                        <div className="space-y-2">
+                          {savedMealPlans.map((plan, index) => (
+                            <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border">
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-800">{plan.name}</h4>
+                                <p className="text-sm text-gray-600">
+                                  {plan.date} • {plan.mealCount} meals: {plan.meals.slice(0, 3).map(m => m.name).join(', ')}
+                                  {plan.meals.length > 3 && ` + ${plan.meals.length - 3} more`}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => loadMealPlan(index)}
+                                className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm"
+                              >
+                                Load
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-600 text-center py-4">
+                          {isLoadingMealPlans ? 'Loading saved meal plans...' : 'No saved meal plans found.'}
+                        </p>
+                      )}
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setShowLoadMealPlan(false)}
+                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {selectedMeals.map((meal, index) => (
                       <div key={index} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
