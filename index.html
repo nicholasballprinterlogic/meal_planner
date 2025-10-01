@@ -35,6 +35,10 @@
           INGREDIENTS_SHEET: 'Ingredients',
           INGREDIENTS_RANGE: 'Ingredients!A:Z',
           
+          // Grocery Lists Sheet Configuration
+          GROCERY_LISTS_SHEET: 'GroceryLists',
+          GROCERY_LISTS_RANGE: 'GroceryLists!A:Z',
+          
           // Google Sheets API endpoint
           API_BASE_URL: 'https://sheets.googleapis.com/v4/spreadsheets',
           
@@ -619,6 +623,185 @@
               throw error;
             }
           }
+
+          /**
+           * Save a grocery list to Google Sheets
+           * @param {Object} groceryList - Grocery list object with name, date, and items
+           * @returns {Promise<boolean>} Success status
+           */
+          async saveGroceryList(groceryList) {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
+            }
+
+            try {
+              // Ensure the GroceryLists sheet exists
+              await this.ensureGroceryListsSheetExists();
+              
+              // Get current grocery lists to find the next empty row
+              const currentLists = await this.loadGroceryLists();
+              const nextRow = currentLists.length + 2; // +2 because we start from row 2 (after header)
+              
+              // Format: List Name | Date | Item Count | Item 1 | Quantity 1 | Item 2 | Quantity 2 | ...
+              const rowData = [
+                groceryList.name,
+                groceryList.date,
+                groceryList.items.length
+              ];
+              
+              // Add items and quantities
+              groceryList.items.forEach(item => {
+                rowData.push(item.name, item.quantity || 1);
+              });
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.GROCERY_LISTS_SHEET}!A${nextRow}:append?valueInputOption=RAW`;
+              
+              await this.makeAuthenticatedRequest(url, {
+                method: 'POST',
+                body: JSON.stringify({
+                  values: [rowData]
+                })
+              });
+
+              return true;
+            } catch (error) {
+              console.error('Error saving grocery list to Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Load grocery lists from Google Sheets
+           * @returns {Promise<Array>} Array of grocery list objects
+           */
+          async loadGroceryLists() {
+            if (!this.config.SHEET_ID) {
+              throw new Error('Sheet ID not configured');
+            }
+
+            try {
+              // Ensure the GroceryLists sheet exists
+              await this.ensureGroceryListsSheetExists();
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.GROCERY_LISTS_RANGE}`;
+              
+              const response = await this.makeAuthenticatedRequest(url);
+              const data = await response.json();
+              
+              if (!data.values || data.values.length === 0) {
+                return [];
+              }
+
+              // Convert sheet data to grocery list objects
+              const groceryLists = data.values.slice(1).map(row => {
+                if (!row[0] || row[0].trim() === '') return null;
+                
+                const itemCount = parseInt(row[2]) || 0;
+                const items = [];
+                
+                // Extract items and quantities starting from column 4 (index 3)
+                for (let i = 3; i < 3 + (itemCount * 2); i += 2) {
+                  if (row[i] && row[i].trim()) {
+                    items.push({
+                      name: row[i].trim(),
+                      quantity: parseInt(row[i + 1]) || 1
+                    });
+                  }
+                }
+                
+                return {
+                  name: row[0].trim(),
+                  date: row[1] || '',
+                  itemCount: itemCount,
+                  items: items
+                };
+              }).filter(list => list !== null);
+
+              return groceryLists;
+            } catch (error) {
+              console.error('Error loading grocery lists from Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Ensure the GroceryLists sheet exists, create it if it doesn't
+           * @returns {Promise<void>}
+           */
+          async ensureGroceryListsSheetExists() {
+            try {
+              // Try to read from the GroceryLists sheet to see if it exists
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.GROCERY_LISTS_SHEET}!A1:A1`;
+              
+              try {
+                await this.makeAuthenticatedRequest(url);
+                // Sheet exists, check if it has headers
+                await this.ensureGroceryListsHeaders();
+              } catch (error) {
+                if (error.message.includes('Unable to parse range')) {
+                  // Sheet doesn't exist, create it
+                  await this.createGroceryListsSheet();
+                } else {
+                  throw error;
+                }
+              }
+            } catch (error) {
+              console.error('Error ensuring GroceryLists sheet exists:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Create the GroceryLists sheet with proper headers
+           * @returns {Promise<void>}
+           */
+          async createGroceryListsSheet() {
+            try {
+              // Add a new sheet to the spreadsheet
+              const addSheetUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}:batchUpdate`;
+              
+              await this.makeAuthenticatedRequest(addSheetUrl, {
+                method: 'POST',
+                body: JSON.stringify({
+                  requests: [{
+                    addSheet: {
+                      properties: {
+                        title: this.config.GROCERY_LISTS_SHEET
+                      }
+                    }
+                  }]
+                })
+              });
+
+              // Add headers to the new sheet
+              await this.ensureGroceryListsHeaders();
+            } catch (error) {
+              console.error('Error creating GroceryLists sheet:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Ensure the GroceryLists sheet has proper headers
+           * @returns {Promise<void>}
+           */
+          async ensureGroceryListsHeaders() {
+            try {
+              const headers = ['List Name', 'Date', 'Item Count', 'Item 1', 'Quantity 1', 'Item 2', 'Quantity 2', 'Item 3', 'Quantity 3', 'Item 4', 'Quantity 4', 'Item 5', 'Quantity 5', 'Item 6', 'Quantity 6', 'Item 7', 'Quantity 7', 'Item 8', 'Quantity 8', 'Item 9', 'Quantity 9', 'Item 10', 'Quantity 10'];
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.GROCERY_LISTS_SHEET}!A1?valueInputOption=RAW`;
+              
+              await this.makeAuthenticatedRequest(url, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  values: [headers]
+                })
+              });
+            } catch (error) {
+              console.error('Error setting GroceryLists headers:', error);
+              throw error;
+            }
+          }
         }
 
         // Make it globally available
@@ -826,6 +1009,16 @@
           const [newIngredientCategory, setNewIngredientCategory] = useState('General');
           const [isLoadingIngredients, setIsLoadingIngredients] = useState(false);
 
+          // Grocery list management state
+          const [manualGroceryList, setManualGroceryList] = useState([]);
+          const [newGroceryItem, setNewGroceryItem] = useState('');
+          const [newGroceryQuantity, setNewGroceryQuantity] = useState(1);
+          const [showSaveGroceryList, setShowSaveGroceryList] = useState(false);
+          const [showLoadGroceryList, setShowLoadGroceryList] = useState(false);
+          const [groceryListName, setGroceryListName] = useState('');
+          const [savedGroceryLists, setSavedGroceryLists] = useState([]);
+          const [isLoadingGroceryLists, setIsLoadingGroceryLists] = useState(false);
+
           // Sign in with Google OAuth2
           const signInWithGoogle = async () => {
             setIsLoadingSheets(true);
@@ -840,6 +1033,7 @@
                 await loadMealsFromSheets();
                 await loadSavedMealPlans();
                 await loadIngredients();
+                await loadSavedGroceryLists();
               }
             } catch (error) {
               console.error('Failed to sign in:', error);
@@ -1092,6 +1286,142 @@
             } finally {
               setIsLoadingIngredients(false);
             }
+          };
+
+          // Add item to manual grocery list
+          const addToGroceryList = () => {
+            if (newGroceryItem.trim()) {
+              const newItem = {
+                name: newGroceryItem.trim(),
+                quantity: newGroceryQuantity
+              };
+              
+              // Check if item already exists, if so, update quantity
+              const existingIndex = manualGroceryList.findIndex(item => 
+                item.name.toLowerCase() === newItem.name.toLowerCase()
+              );
+              
+              if (existingIndex >= 0) {
+                const updatedList = [...manualGroceryList];
+                updatedList[existingIndex].quantity += newItem.quantity;
+                setManualGroceryList(updatedList);
+              } else {
+                setManualGroceryList([...manualGroceryList, newItem]);
+              }
+              
+              setNewGroceryItem('');
+              setNewGroceryQuantity(1);
+            }
+          };
+
+          // Remove item from manual grocery list
+          const removeFromGroceryList = (index) => {
+            const updatedList = manualGroceryList.filter((_, i) => i !== index);
+            setManualGroceryList(updatedList);
+          };
+
+          // Update item quantity in grocery list
+          const updateGroceryItemQuantity = (index, quantity) => {
+            const updatedList = [...manualGroceryList];
+            updatedList[index].quantity = Math.max(1, quantity);
+            setManualGroceryList(updatedList);
+          };
+
+          // Generate enhanced grocery list (from meals + manual items)
+          const generateEnhancedGroceryList = () => {
+            const mealIngredients = selectedMeals.flatMap(meal => meal.ingredients || []);
+            const ingredientCount = {};
+            
+            // Count ingredients from meals
+            mealIngredients.forEach(ingredient => {
+              ingredientCount[ingredient.toLowerCase()] = (ingredientCount[ingredient.toLowerCase()] || 0) + 1;
+            });
+
+            // Add manual grocery items
+            manualGroceryList.forEach(item => {
+              const key = item.name.toLowerCase();
+              ingredientCount[key] = (ingredientCount[key] || 0) + item.quantity;
+            });
+            
+            return Object.entries(ingredientCount)
+              .map(([name, count]) => ({ name, quantity: count }))
+              .sort((a, b) => a.name.localeCompare(b.name));
+          };
+
+          // Save grocery list to Google Sheets
+          const saveGroceryList = async () => {
+            if (useLocalData || !isSignedIn) return;
+            
+            if (!groceryListName.trim()) {
+              setSheetsError('Please enter a name for the grocery list');
+              return;
+            }
+
+            setIsLoadingGroceryLists(true);
+            setSheetsError(null);
+            
+            try {
+              const enhancedList = generateEnhancedGroceryList();
+              
+              const groceryList = {
+                name: groceryListName.trim(),
+                date: new Date().toLocaleDateString(),
+                items: enhancedList
+              };
+              
+              await sheetsService.saveGroceryList(groceryList);
+              
+              // Refresh saved grocery lists
+              await loadSavedGroceryLists();
+              
+              // Reset form
+              setGroceryListName('');
+              setShowSaveGroceryList(false);
+              
+              console.log('Grocery list saved successfully');
+            } catch (error) {
+              console.error('Failed to save grocery list:', error);
+              setSheetsError(error.message);
+              if (error.message.includes('Authentication expired')) {
+                setIsSignedIn(false);
+              }
+            } finally {
+              setIsLoadingGroceryLists(false);
+            }
+          };
+
+          // Load saved grocery lists
+          const loadSavedGroceryLists = async () => {
+            if (useLocalData || !isSignedIn) return;
+            
+            setIsLoadingGroceryLists(true);
+            setSheetsError(null);
+            
+            try {
+              const lists = await sheetsService.loadGroceryLists();
+              setSavedGroceryLists(lists);
+              console.log('Loaded grocery lists from Google Sheets:', lists.length);
+            } catch (error) {
+              console.error('Failed to load grocery lists from Google Sheets:', error);
+              setSheetsError(error.message);
+              if (error.message.includes('Authentication expired')) {
+                setIsSignedIn(false);
+              }
+            } finally {
+              setIsLoadingGroceryLists(false);
+            }
+          };
+
+          // Load a specific grocery list
+          const loadGroceryList = (listIndex) => {
+            if (listIndex < 0 || listIndex >= savedGroceryLists.length) return;
+            
+            const list = savedGroceryLists[listIndex];
+            setManualGroceryList(list.items);
+            setShowLoadGroceryList(false);
+            setShowGroceryList(true);
+            
+            console.log(`Loaded grocery list: ${list.name}`);
           };
 
           // Toggle between local and Google Sheets data
@@ -1846,31 +2176,191 @@
                 </div>
               )}
 
-              {/* Grocery List */}
+              {/* Enhanced Grocery List */}
               {showGroceryList && selectedMeals.length > 0 && (
                 <div className="bg-green-50 p-6 rounded-lg">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-4">Grocery List</h2>
-                  {generateGroceryList().length > 0 ? (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {generateGroceryList().map(([ingredient, count]) => (
-                          <div key={ingredient} className="flex items-center justify-between bg-white p-2 rounded border">
-                            <span className="text-gray-700 capitalize">{ingredient}</span>
-                            {count > 1 && (
-                              <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">
-                                x{count}
-                              </span>
-                            )}
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-800">Enhanced Grocery List</h2>
+                    
+                    {/* Grocery List Actions */}
+                    {!useLocalData && isSignedIn && (
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => setShowSaveGroceryList(!showSaveGroceryList)}
+                          className="flex items-center space-x-1 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
+                        >
+                          <span>💾</span>
+                          <span>Save List</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowLoadGroceryList(!showLoadGroceryList);
+                            if (!showLoadGroceryList) loadSavedGroceryLists();
+                          }}
+                          disabled={isLoadingGroceryLists}
+                          className="flex items-center space-x-1 px-3 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-gray-400 transition-colors text-sm"
+                        >
+                          <span>📋</span>
+                          <span>{isLoadingGroceryLists ? 'Loading...' : 'Load List'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Save Grocery List Form */}
+                  {showSaveGroceryList && !useLocalData && isSignedIn && (
+                    <div className="bg-white p-4 rounded-lg mb-4 border border-green-200">
+                      <h3 className="font-medium text-gray-800 mb-3">Save Current Grocery List</h3>
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="text"
+                          value={groceryListName}
+                          onChange={(e) => setGroceryListName(e.target.value)}
+                          placeholder="Enter grocery list name..."
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                        />
+                        <button
+                          onClick={saveGroceryList}
+                          disabled={!groceryListName.trim() || isLoadingGroceryLists}
+                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {isLoadingGroceryLists ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowSaveGroceryList(false);
+                            setGroceryListName('');
+                          }}
+                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Load Grocery List */}
+                  {showLoadGroceryList && !useLocalData && isSignedIn && (
+                    <div className="bg-white p-4 rounded-lg mb-4 border border-green-200">
+                      <h3 className="font-medium text-gray-800 mb-3">Load Saved Grocery List</h3>
+                      {savedGroceryLists.length > 0 ? (
+                        <div className="space-y-2">
+                          {savedGroceryLists.map((list, index) => (
+                            <div key={index} className="flex items-center justify-between bg-green-50 p-3 rounded-lg border">
+                              <div className="flex-1">
+                                <h4 className="font-medium text-gray-800">{list.name}</h4>
+                                <p className="text-sm text-gray-600">
+                                  {list.date} • {list.itemCount} items
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => loadGroceryList(index)}
+                                className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
+                              >
+                                Load
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-600 text-center py-4">
+                          {isLoadingGroceryLists ? 'Loading saved grocery lists...' : 'No saved grocery lists found.'}
+                        </p>
+                      )}
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setShowLoadGroceryList(false)}
+                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manual Item Addition */}
+                  <div className="bg-white p-4 rounded-lg mb-4 border border-green-200">
+                    <h3 className="font-medium text-gray-800 mb-3">Add Items Manually</h3>
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="text"
+                        value={newGroceryItem}
+                        onChange={(e) => setNewGroceryItem(e.target.value)}
+                        placeholder="Enter item name..."
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                        onKeyPress={(e) => e.key === 'Enter' && addToGroceryList()}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        value={newGroceryQuantity}
+                        onChange={(e) => setNewGroceryQuantity(parseInt(e.target.value) || 1)}
+                        className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                      <button
+                        onClick={addToGroceryList}
+                        disabled={!newGroceryItem.trim()}
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Manual Grocery Items */}
+                  {manualGroceryList.length > 0 && (
+                    <div className="bg-white p-4 rounded-lg mb-4 border border-green-200">
+                      <h3 className="font-medium text-gray-800 mb-3">Manual Items ({manualGroceryList.length})</h3>
+                      <div className="space-y-2">
+                        {manualGroceryList.map((item, index) => (
+                          <div key={index} className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                            <span className="text-gray-700 capitalize flex-1">{item.name}</span>
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateGroceryItemQuantity(index, parseInt(e.target.value) || 1)}
+                                className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm"
+                              />
+                              <button
+                                onClick={() => removeFromGroceryList(index)}
+                                className="text-red-500 hover:bg-red-50 p-1 rounded"
+                              >
+                                ❌
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
-                      <div className="mt-4 text-sm text-gray-600">
-                        Total items: {generateGroceryList().length}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-gray-600">No ingredients found in selected meals. Add ingredients to meals to generate a grocery list!</p>
+                    </div>
                   )}
+
+                  {/* Combined Grocery List */}
+                  <div className="bg-white p-4 rounded-lg border border-green-200">
+                    <h3 className="font-medium text-gray-800 mb-3">Complete Grocery List</h3>
+                    {generateEnhancedGroceryList().length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {generateEnhancedGroceryList().map((item, index) => (
+                            <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded border">
+                              <span className="text-gray-700 capitalize">{item.name}</span>
+                              {item.quantity > 1 && (
+                                <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">
+                                  x{item.quantity}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 text-sm text-gray-600">
+                          Total items: {generateEnhancedGroceryList().length}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-gray-600">No ingredients found in selected meals and no manual items added. Add ingredients to meals or add items manually!</p>
+                    )}
+                  </div>
                 </div>
               )}
 
