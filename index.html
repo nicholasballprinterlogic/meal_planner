@@ -9,6 +9,218 @@
     <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
     <!-- Lucide icons will be replaced with simple text -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Sheets Integration - Inline for GitHub Pages compatibility -->
+    <script>
+        // Google Sheets API Configuration
+        const CONFIG = {
+          // Your Google Sheets API Key (create one in Google Cloud Console)
+          API_KEY: 'YOUR_API_KEY_HERE',
+          
+          // Your Google Sheet ID (from the URL of your sheet)
+          // Example: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit
+          SHEET_ID: 'YOUR_SHEET_ID_HERE',
+          
+          // The range in your sheet where meal data is stored
+          // Expected format: Column A = Meal Name, Column B and beyond = Ingredients
+          SHEET_RANGE: 'Sheet1!A:Z',
+          
+          // Google Sheets API endpoint
+          API_BASE_URL: 'https://sheets.googleapis.com/v4/spreadsheets'
+        };
+
+        // Google Sheets API Service
+        class GoogleSheetsService {
+          constructor() {
+            this.config = CONFIG;
+            this.isLoading = false;
+          }
+
+          /**
+           * Read data from Google Sheets
+           * @returns {Promise<Array>} Array of meal objects
+           */
+          async readMeals() {
+            if (!this.config.API_KEY || !this.config.SHEET_ID) {
+              throw new Error('Please configure your Google Sheets API key and Sheet ID in the CONFIG object');
+            }
+
+            this.isLoading = true;
+            
+            try {
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/${this.config.SHEET_RANGE}?key=${this.config.API_KEY}`;
+              
+              const response = await fetch(url);
+              
+              if (!response.ok) {
+                if (response.status === 403) {
+                  throw new Error('API key is invalid or doesn\'t have permission to access this sheet');
+                } else if (response.status === 404) {
+                  throw new Error('Sheet not found. Check your Sheet ID');
+                } else {
+                  throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
+                }
+              }
+
+              const data = await response.json();
+              
+              if (!data.values || data.values.length === 0) {
+                return [];
+              }
+
+              // Convert sheet data to meal objects
+              const meals = data.values.slice(1).map(row => {
+                if (!row[0] || row[0].trim() === '') return null;
+                
+                return {
+                  name: row[0].trim(),
+                  ingredients: row.slice(1).filter(ingredient => 
+                    ingredient && ingredient.trim() !== ''
+                  ).map(ingredient => ingredient.trim())
+                };
+              }).filter(meal => meal !== null);
+
+              return meals;
+            } catch (error) {
+              console.error('Error reading from Google Sheets:', error);
+              throw error;
+            } finally {
+              this.isLoading = false;
+            }
+          }
+
+          /**
+           * Write a new meal to Google Sheets
+           * @param {Object} meal - Meal object with name and ingredients
+           * @returns {Promise<boolean>} Success status
+           */
+          async addMeal(meal) {
+            if (!this.config.API_KEY || !this.config.SHEET_ID) {
+              throw new Error('Please configure your Google Sheets API key and Sheet ID in the CONFIG object');
+            }
+
+            try {
+              // First, get current data to find the next empty row
+              const currentMeals = await this.readMeals();
+              const nextRow = currentMeals.length + 2; // +2 because we start from row 2 (after header)
+              
+              const rowData = [meal.name, ...meal.ingredients];
+              
+              const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${nextRow}:append?valueInputOption=RAW&key=${this.config.API_KEY}`;
+              
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  values: [rowData]
+                })
+              });
+
+              if (!response.ok) {
+                throw new Error(`Failed to add meal: ${response.status} ${response.statusText}`);
+              }
+
+              return true;
+            } catch (error) {
+              console.error('Error adding meal to Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Update an existing meal in Google Sheets
+           * @param {number} rowIndex - The row index (0-based) of the meal to update
+           * @param {Object} meal - Updated meal object
+           * @returns {Promise<boolean>} Success status
+           */
+          async updateMeal(rowIndex, meal) {
+            if (!this.config.API_KEY || !this.config.SHEET_ID) {
+              throw new Error('Please configure your Google Sheets API key and Sheet ID in the CONFIG object');
+            }
+
+            try {
+              const sheetRow = rowIndex + 2; // +2 because we start from row 2 (after header)
+              const rowData = [meal.name, ...meal.ingredients];
+              
+              // Clear the row first by getting the current range
+              const clearUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}:Z${sheetRow}:clear?key=${this.config.API_KEY}`;
+              
+              const clearResponse = await fetch(clearUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              });
+
+              if (!clearResponse.ok) {
+                throw new Error(`Failed to clear row: ${clearResponse.status} ${clearResponse.statusText}`);
+              }
+
+              // Now update with new data
+              const updateUrl = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A${sheetRow}?valueInputOption=RAW&key=${this.config.API_KEY}`;
+              
+              const updateResponse = await fetch(updateUrl, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  values: [rowData]
+                })
+              });
+
+              if (!updateResponse.ok) {
+                throw new Error(`Failed to update meal: ${updateResponse.status} ${updateResponse.statusText}`);
+              }
+
+              return true;
+            } catch (error) {
+              console.error('Error updating meal in Google Sheets:', error);
+              throw error;
+            }
+          }
+
+          /**
+           * Initialize the sheet with headers if it's empty
+           * @returns {Promise<boolean>} Success status
+           */
+          async initializeSheet() {
+            try {
+              const meals = await this.readMeals();
+              
+              // If sheet is completely empty, add headers
+              if (meals.length === 0) {
+                const url = `${this.config.API_BASE_URL}/${this.config.SHEET_ID}/values/Sheet1!A1?valueInputOption=RAW&key=${this.config.API_KEY}`;
+                
+                const response = await fetch(url, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    values: [['Meal Name', 'Ingredient 1', 'Ingredient 2', 'Ingredient 3', 'Ingredient 4', 'Ingredient 5']]
+                  })
+                });
+
+                if (!response.ok) {
+                  throw new Error(`Failed to initialize sheet: ${response.status} ${response.statusText}`);
+                }
+              }
+              
+              return true;
+            } catch (error) {
+              console.error('Error initializing sheet:', error);
+              throw error;
+            }
+          }
+        }
+
+        // Make it globally available
+        window.GoogleSheetsService = GoogleSheetsService;
+        window.CONFIG = CONFIG;
+    </script>
     <style>
         body {
             margin: 0;
@@ -42,7 +254,13 @@
         const Edit = () => "✏️";
 
         const MealPlanner = () => {
-          // Your historic meals
+          // Initialize Google Sheets service
+          const [sheetsService] = useState(() => new GoogleSheetsService());
+          const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+          const [sheetsError, setSheetsError] = useState(null);
+          const [useLocalData, setUseLocalData] = useState(true);
+
+          // Your historic meals (fallback data)
           const sampleMeals = [
             { name: "Ahi tuna salad", ingredients: [] },
             { name: "Alfredo chicken", ingredients: [] },
@@ -182,6 +400,57 @@
           const [editingMealIndex, setEditingMealIndex] = useState(-1);
           const [showMealList, setShowMealList] = useState(false);
 
+          // Load meals from Google Sheets
+          const loadMealsFromSheets = async () => {
+            if (useLocalData) return;
+            
+            setIsLoadingSheets(true);
+            setSheetsError(null);
+            
+            try {
+              const meals = await sheetsService.readMeals();
+              setAllMeals(meals.length > 0 ? meals : sampleMeals);
+              console.log('Loaded meals from Google Sheets:', meals.length);
+            } catch (error) {
+              console.error('Failed to load from Google Sheets:', error);
+              setSheetsError(error.message);
+              setAllMeals(sampleMeals); // Fallback to local data
+            } finally {
+              setIsLoadingSheets(false);
+            }
+          };
+
+          // Save meal to Google Sheets
+          const saveMealToSheets = async (meal, isUpdate = false, originalIndex = -1) => {
+            if (useLocalData) return true;
+            
+            try {
+              if (isUpdate) {
+                await sheetsService.updateMeal(originalIndex, meal);
+              } else {
+                await sheetsService.addMeal(meal);
+              }
+              return true;
+            } catch (error) {
+              console.error('Failed to save to Google Sheets:', error);
+              setSheetsError(error.message);
+              return false;
+            }
+          };
+
+          // Toggle between local and Google Sheets data
+          const toggleDataSource = () => {
+            setUseLocalData(!useLocalData);
+            if (useLocalData) {
+              // Switching to Google Sheets
+              loadMealsFromSheets();
+            } else {
+              // Switching to local data
+              setAllMeals(sampleMeals);
+              setSheetsError(null);
+            }
+          };
+
           // Add a new ingredient input field
           const addIngredientField = () => {
             setNewMealIngredients([...newMealIngredients, '']);
@@ -210,7 +479,7 @@
           };
 
           // Save new meal or update existing
-          const saveNewMeal = () => {
+          const saveNewMeal = async () => {
             if (newMealName.trim()) {
               const filteredIngredients = newMealIngredients.filter(ing => ing.trim() !== '');
               const mealData = {
@@ -222,17 +491,25 @@
                 // Update existing meal
                 const updatedMeals = [...allMeals];
                 updatedMeals[editingMealIndex] = mealData;
-                setAllMeals(updatedMeals);
                 
-                // Update selected meals if the edited meal is currently selected
-                setSelectedMeals(prev => 
-                  prev.map(meal => 
-                    meal.name === allMeals[editingMealIndex].name ? mealData : meal
-                  )
-                );
+                // Try to save to Google Sheets
+                const success = await saveMealToSheets(mealData, true, editingMealIndex);
+                if (success || useLocalData) {
+                  setAllMeals(updatedMeals);
+                  
+                  // Update selected meals if the edited meal is currently selected
+                  setSelectedMeals(prev => 
+                    prev.map(meal => 
+                      meal.name === allMeals[editingMealIndex].name ? mealData : meal
+                    )
+                  );
+                }
               } else {
                 // Add new meal
-                setAllMeals([...allMeals, mealData]);
+                const success = await saveMealToSheets(mealData, false);
+                if (success || useLocalData) {
+                  setAllMeals([...allMeals, mealData]);
+                }
               }
               
               resetMealForm();
@@ -291,9 +568,69 @@
             }
           }, [mealCount]);
 
+          // Load meals from Google Sheets on component mount
+          useEffect(() => {
+            if (!useLocalData) {
+              loadMealsFromSheets();
+            }
+          }, []);
+
           return (
             <div className="max-w-4xl mx-auto p-6 bg-white">
               <h1 className="text-3xl font-bold text-gray-800 mb-8 text-center">Meal Planner</h1>
+              
+              {/* Data Source Toggle */}
+              <div className="bg-yellow-50 p-6 rounded-lg mb-6 border border-yellow-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-800">Data Source</h2>
+                    <p className="text-sm text-gray-600">
+                      Choose between local data or Google Sheets integration
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={!useLocalData}
+                        onChange={toggleDataSource}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        Use Google Sheets
+                      </span>
+                    </label>
+                    {!useLocalData && (
+                      <button
+                        onClick={loadMealsFromSheets}
+                        disabled={isLoadingSheets}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+                      >
+                        {isLoadingSheets ? 'Loading...' : 'Refresh'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Error Message */}
+                {sheetsError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h3 className="font-medium text-red-800 mb-2">Google Sheets Error</h3>
+                    <p className="text-sm text-red-700 mb-3">{sheetsError}</p>
+                    <p className="text-xs text-red-600">
+                      Using local data as fallback. Please update the CONFIG object in the HTML file with your API key and Sheet ID.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Status */}
+                <div className="text-sm text-gray-600">
+                  <strong>Status:</strong> {useLocalData ? 'Using local data' : 
+                    isLoadingSheets ? 'Loading from Google Sheets...' : 
+                    sheetsError ? 'Using local data (Google Sheets error)' : 
+                    'Connected to Google Sheets'}
+                </div>
+              </div>
               
               {/* Add New Meal Section */}
               <div className="bg-purple-50 p-6 rounded-lg mb-6">
@@ -534,13 +871,15 @@
 
               {/* Instructions */}
               <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-medium text-gray-800 mb-2">Your Meal Database is Ready!</h3>
+                <h3 className="font-medium text-gray-800 mb-2">Meal Planner with Google Sheets Integration!</h3>
                 <p className="text-sm text-gray-600 mb-2">
-                  I've loaded all 113 of your historic meals. The meal planner is fully functional for selecting and planning meals.
+                  {useLocalData ? 
+                    'Currently using local data with 113 historic meals. Enable Google Sheets integration above to sync with your spreadsheet.' :
+                    'Google Sheets integration is enabled. Your meals will be saved to and loaded from your Google Sheet.'
+                  }
                 </p>
                 <p className="text-sm text-gray-600">
-                  <strong>Next step:</strong> To enable the grocery list feature, you can add ingredient arrays to each meal in the code. 
-                  For example: <code className="bg-gray-200 px-1 rounded">ingredients: ["chicken", "pasta", "alfredo sauce"]</code>
+                  <strong>Setup:</strong> Update the CONFIG object at the top of this HTML file with your Google Sheets API key and Sheet ID to enable Google Sheets functionality.
                 </p>
               </div>
             </div>
